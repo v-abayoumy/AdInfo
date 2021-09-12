@@ -87,7 +87,7 @@ if (!(New-Object Security.Principal.WindowsPrincipal([Security.Principal.Windows
     Exit
 }
 
-#//todo check and load RSAT-AD-PowerShell
+# check and load RSAT-AD-PowerShell
 if( ! (get-module -list activedirectory)){
     Write-Warning "Please run this script on AD DC or on Computer with RSAT installed."
     Start-Process "https://docs.microsoft.com/en-us/troubleshoot/windows-server/system-management-components/remote-server-administration-tools"
@@ -96,24 +96,25 @@ if( ! (get-module -list activedirectory)){
 
 Import-Module activedirectory
 Import-Module grouppolicy
-$path = "c:\MS-Log $((Get-Date).ToString('dd-MM-yyyy'))"
+$LogPath = "$($env:SystemDrive)\MS-Log $((Get-Date).ToString('dd-MM-yyyy'))"
+$zipFile = "$($LogPath).zip"
 $HostName = [System.Net.Dns]::GetHostName()
 $Now=$((Get-Date).ToString('dd-MM-yyyy hh-mm'))
-If (!(Test-Path -Path $path -ErrorAction SilentlyContinue )) {  New-Item $path -Type Directory -ErrorAction SilentlyContinue | Out-Null }
+If (!(Test-Path -Path $LogPath -ErrorAction SilentlyContinue )) {  New-Item $LogPath -Type Directory -ErrorAction SilentlyContinue | Out-Null }
 
 $DFL=(Get-ADDomain).DomainMode
 $FFL=(Get-ADForest).ForestMode
 $Forest=Get-ADForest
 $Domain=Get-ADDomain
 Write-Output "Forest:$($Forest.Name) $($Forest.Domains)"
-Get-ADDomain | fl Name, DomainMode > "$path\DFL.txt"
-Get-ADForest | fl Name, ForestMode > "$path\FFL.txt"
-Netdom /query fsmo > "$($path)\fsmo.txt"
-Repadmin /showrepl * /csv > "$path\showrepl-$($Now).csv"
-Gpresult /h "$path\GPResult-$($HostName)-$($Now).html"
-Get-ADDomainController -Filter * | Select-Object Name, OperatingSystem, IPv4Address, Site > "$path\dclist.txt"
-(get-ADForest).domains | ForEach-Object { get-GPO -all -Domain $_ | Select-Object @{n='Domain Name';e={$_.DomainName}}, @{n='GPO Name';e={$_.DisplayName}}, @{n='GPO Guid';e={$_.Id}} , @{n='Gpo Status';e={$_.GpoStatus}} , @{n='Creation Time';e={$_.CreationTime}} , @{n='Modification Time';e={$_.ModificationTime}} } | Export-Csv "$path\AllGPOsList.csv"
-Get-GPOReport -All  -ReportType HTML -Path "$path\GPOReport-$($Now).html"
+Get-ADDomain | Format-List Name, DomainMode > "$LogPath\DFL.txt"
+Get-ADForest | Format-List Name, ForestMode > "$LogPath\FFL.txt"
+Netdom /query fsmo > "$($LogPath)\fsmo.txt"
+Repadmin /showrepl * /csv > "$LogPath\showrepl-$($Now).csv"
+Gpresult /h "$LogPath\GPResult-$($HostName)-$($Now).html"
+Get-ADDomainController -Filter * | Select-Object Name, OperatingSystem, IPv4Address, Site > "$LogPath\dclist.txt"
+(get-ADForest).domains | ForEach-Object { get-GPO -all -Domain $_ | Select-Object @{n='Domain Name';e={$_.DomainName}}, @{n='GPO Name';e={$_.DisplayName}}, @{n='GPO Guid';e={$_.Id}} , @{n='Gpo Status';e={$_.GpoStatus}} , @{n='Creation Time';e={$_.CreationTime}} , @{n='Modification Time';e={$_.ModificationTime}} } | Export-Csv "$LogPath\AllGPOsList.csv"
+Get-GPOReport -All  -ReportType HTML -Path "$LogPath\GPOReport-$($Now).html"
 
 $Sites = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Sites           
 $obj = @() 
@@ -122,13 +123,18 @@ foreach ($Site in $Sites) {
  $obj += New-Object -Type PSObject -Property (            
   @{            
    "SiteName"  = $site.Name     
-   "SubNets" = $site.Subnets | % { $_ }            
-   "Servers" = $Site.Servers | % { $_ }                    
+   "SubNets" = $site.Subnets | ForEach-Object { $_ }            
+   "Servers" = $Site.Servers | ForEach-Object { $_ }                    
   }            
  )            
 }
-$obj | Export-Csv "$path\sites-$($Now).csv" -NoType 
+$obj | Export-Csv "$LogPath\sites-$($Now).csv" -NoType 
 
 
 
-Compress-Archive -Path $path -DestinationPath "$($path).zip" -Update
+Compress-Archive -Path $LogPath -DestinationPath $zipFile -Update
+
+$wshell = New-Object -ComObject Wscript.Shell
+$wshell.Popup("Reports saved to file $($zipFile)",0,"Information",0)
+
+Start-Process (Split-Path -Path $LogPath)
