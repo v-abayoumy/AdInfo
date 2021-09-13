@@ -79,8 +79,6 @@ $header = @"
 
 </style>
 "@
-
-
 if (!(New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
 {
     Write-Warning "Please run this script as adminidtrator."
@@ -89,23 +87,23 @@ if (!(New-Object Security.Principal.WindowsPrincipal([Security.Principal.Windows
 
 # check and load RSAT-AD-PowerShell
 if( ! (get-module -list activedirectory)){
-    Write-Warning "Please run this script on AD DC or on Computer with RSAT installed."
+    Write-Warning "Please run this script on AD DC."
     Start-Process "https://docs.microsoft.com/en-us/troubleshoot/windows-server/system-management-components/remote-server-administration-tools"
     Exit    
 }
 
 Import-Module activedirectory
 Import-Module grouppolicy
-$LogPath = "$($env:SystemDrive)\MS-Log $((Get-Date).ToString('dd-MM-yyyy'))"
+$LogPath = "$($PSScriptRoot)\AD-Info $((Get-Date).ToString('dd-MM-yyyy'))"
 $zipFile = "$($LogPath).zip"
 $HostName = [System.Net.Dns]::GetHostName()
 $Now=$((Get-Date).ToString('dd-MM-yyyy hh-mm'))
 If (!(Test-Path -Path $LogPath -ErrorAction SilentlyContinue )) {  New-Item $LogPath -Type Directory -ErrorAction SilentlyContinue | Out-Null }
 
-$DFL=(Get-ADDomain).DomainMode
-$FFL=(Get-ADForest).ForestMode
+# $DFL=(Get-ADDomain).DomainMode
+# $FFL=(Get-ADForest).ForestMode
 $Forest=Get-ADForest
-$Domain=Get-ADDomain
+# $Domain=Get-ADDomain
 Write-Output "Forest:$($Forest.Name) $($Forest.Domains)"
 Get-ADDomain | Format-List Name, DomainMode > "$LogPath\DFL.txt"
 Get-ADForest | Format-List Name, ForestMode > "$LogPath\FFL.txt"
@@ -130,11 +128,7 @@ foreach ($Site in $Sites) {
 }
 $obj | Export-Csv "$LogPath\sites-$($Now).csv" -NoType 
 
-
-
 Compress-Archive -Path $LogPath -DestinationPath $zipFile -Update
 
-$wshell = New-Object -ComObject Wscript.Shell
-$wshell.Popup("Reports saved to file $($zipFile)",0,"Information",0)
-
+Write-Output "Reports saved to file $($zipFile)"
 Start-Process (Split-Path -Path $LogPath)
