@@ -101,6 +101,21 @@ $header = @"
 
 </style>
 "@
+function Export-AllGPOs {
+    param (
+        $path , $Forest
+    )
+    $GPOPath = "$($path)\GPO"
+    New-Item $GPOPath -Type Directory -ErrorAction SilentlyContinue | Out-Null 
+    $Forest.domains | ForEach-Object {
+        Write-Host $_.Name
+        Get-GPO -all -Domain $_  | ForEach-Object { 
+            Write-Host $_.DisplayName
+            Get-GPOReport  -Name $_.DisplayName -ReportType HTML -Path "$GPOPath\$($_.DisplayName).html"
+        }
+    }
+}
+
 if (!(New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
 {
     Write-Warning "Please run this script as adminidtrator."
@@ -141,7 +156,8 @@ Netdom /query fsmo > "$($LogPath)\fsmo.txt"
 Repadmin /showrepl * /csv > "$LogPath\showrepl-$($Now).csv"
 Gpresult /f /h "$LogPath\GPResult-$($HostName)-$($Now).html"
 Get-ADDomainController -Filter * | Select-Object Name, OperatingSystem, IPv4Address, Site > "$LogPath\dclist.txt"
-(get-ADForest).domains | ForEach-Object { get-GPO -all -Domain $_ | Select-Object @{n='Domain Name';e={$_.DomainName}}, @{n='GPO Name';e={$_.DisplayName}}, @{n='GPO Guid';e={$_.Id}} , @{n='Gpo Status';e={$_.GpoStatus}} , @{n='Creation Time';e={$_.CreationTime}} , @{n='Modification Time';e={$_.ModificationTime}} } | Export-Csv "$LogPath\AllGPOsList.csv"
+# $Forest.domains | ForEach-Object { get-GPO -all -Domain $_ | Select-Object @{n='Domain Name';e={$_.DomainName}}, @{n='GPO Name';e={$_.DisplayName}}, @{n='GPO Guid';e={$_.Id}} , @{n='Gpo Status';e={$_.GpoStatus}} , @{n='Creation Time';e={$_.CreationTime}} , @{n='Modification Time';e={$_.ModificationTime}} } | Export-Csv "$LogPath\AllGPOsList.csv"
+Export-AllGPOs $LogPath $Forest
 Get-GPOReport -All  -ReportType HTML -Path "$LogPath\GPOReport-$($Now).html"
 
 $Sites = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Sites           
@@ -150,7 +166,7 @@ foreach ($Site in $Sites) {
 
  $obj += New-Object -Type PSObject -Property (            
   @{            
-   "SiteName"  = $site.Name     
+   "SiteName" = $site.Name     
    "SubNets" = $site.Subnets | ForEach-Object { $_ }            
    "Servers" = $Site.Servers | ForEach-Object { $_ }                    
   }            
@@ -158,10 +174,10 @@ foreach ($Site in $Sites) {
 }
 $obj | Export-Csv "$LogPath\sites-$($Now).csv" -NoType 
 
-$Report="<h2>Forest:$($Forest.Name) FL:$($Forest.ForestMode)</h2><h3>DomainNamingMaster:$($Forest.DomainNamingMaster)<br>SchemaMaster:$($Forest.SchemaMaster)</h3></h2>Domain:$($Domain.Name) FL:$($Domain.DomainMode) </h2>" 
+$Forest_Domain_Info="<h2>Forest:$($Forest.Name) FL:$($Forest.ForestMode)</h2><h3>DomainNamingMaster:$($Forest.DomainNamingMaster)<br>SchemaMaster:$($Forest.SchemaMaster)</h3></h2>Domain:$($Domain.Name) FL:$($Domain.DomainMode) </h2>" 
 
 #$Report = ConvertTo-HTML -Body "$ComputerName $OSinfo $ComputerModel $RAMInfo $DiscInfo " -Head $header -Title "$($Domain.DomainMode) Report" -PostContent "<p id='CreationDate'> Creation Date: $(Get-Date)</p>"
-ConvertTo-HTML -Body "$Report" -Head $header -Title "$($Domain.Name) Report" -PostContent "<h4> Created @ $(Get-Date)</h4>" | Out-File $ReportFile
+ConvertTo-HTML -Body "$Forest_Domain_Info " -Head $header -Title "$($Domain.Name) Report" -PostContent "<h4> Created @ $(Get-Date)</h4>" | Out-File $ReportFile
 
 Compress-Archive -Path $LogPath -DestinationPath $zipFile -Update
 
